@@ -115,14 +115,73 @@ def get_ticker_regressors(tickers_df, ticker_name, filter_name):
 
 # get finacial regressors
 
+## create function for calculating profit margins
+
+def margin(x, y):
+  try:
+    return(float(x)/float(y))
+  except:
+    return('NaN')
+
+# create function for calculating stock growth and revenue growth
+
+def per_growth(x, y):
+  try:
+    return (float(x) / float(y) - 1)
+  except ZeroDivisionError:
+    return('NaN')
+
+def get_fin_regressors(ticker_code):
+    # TEST : get financial data for one ticker
+    data = si.get_financials(ticker=ticker_code)['yearly_income_statement'].transpose()
+    data['co_name'] = tickers_df.loc[ticker_code]['name']
+    data = data.sort_values(by='endDate')
+    #data.loc['ds'] = data.loc['endDate']
+
+    # remove duplicates
+
+    data.drop_duplicates(subset=['totalRevenue'], inplace=True)
+    data = data.reset_index()
+    data.index = data.endDate
+
+    # calculate aggregates
+
+    data['grossProfit_margin'] = data.apply(lambda x : margin(x['grossProfit'],x['totalRevenue']), axis=1)
+    data['operatingIncome_margin'] = data.apply(lambda x : margin(x['operatingIncome'],x['totalRevenue']), axis=1)
+    data['netIncome_margin'] = data.apply(lambda x : margin(x['netIncome'],x['totalRevenue']), axis=1)
+
+    # calculate % growth
+
+    revenue_growth = ['NaN']
+    for i in range(1, len(data)):
+        revenue_growth.append(per_growth(data['totalRevenue'][i],data['totalRevenue'][i-1]))
+    data['revenue_growth'] = revenue_growth
+
+    grossProfit_growth = ['NaN']
+    for i in range(1, len(data)):
+        grossProfit_growth.append(per_growth(data['grossProfit'][i],data['grossProfit'][i-1]))
+    data['grossProfit_growth'] = grossProfit_growth
 
 
+    operatingIncome_growth = ['NaN']
+    for i in range(1, len(data)):
+        operatingIncome_growth.append(per_growth(data['operatingIncome'][i],data['operatingIncome'][i-1]))
+    data['operatingIncome_growth'] = operatingIncome_growth
+
+
+    netIncome_growth = ['NaN']
+    for i in range(1, len(data)):
+        netIncome_growth.append(per_growth(data['netIncome'][i],data['netIncome'][i-1]))
+    data['netIncome_growth'] = netIncome_growth
+
+    return data    
 
 
 
 
 
 tickers_df = get_tickets(INDICES_NAMES)
+#holidays_df = get_holidays(tickers_df,ticker_index)
 
 # Layout
 app = dash.Dash(external_stylesheets=[dbc.themes.BOOTSTRAP])
@@ -154,6 +213,7 @@ app.layout = dbc.Container(
             [
                 dbc.Col(controls2, md=4),
                 dbc.Col(dcc.Graph(id="sector-ticker-graph"), md=8),
+                dbc.Col(dcc.Graph(id="forcast-ticker-graph"), md=12),
             ],
             align="center",
         ),
@@ -174,10 +234,7 @@ def make_sector_graph(ticker_name):
     ticker_index = tickers_df[tickers_df.name == ticker_name].index[0]
     #sector_filter = tickers_df[tickers_df.name == ticker_name].sector[0]
     tickers_data = get_ticker_regressors(tickers_df, ticker_index, FILTER)
-    print(f'{len(tickers_data)} regressor tickers added')
-    holidays_df = get_holidays(tickers_df,ticker_index)
-
-    
+    #print(f'{len(tickers_data)} regressor tickers added')
 
     data = [
         go.Scatter(
@@ -187,7 +244,6 @@ def make_sector_graph(ticker_name):
             marker={"size": 5},
             name=f"{ticker_name} - {ticker_index}",
         )
-        #for c in range(n_clusters)
     ]
     for ticker_reg_index in tickers_data.keys():
         data.append(
@@ -199,11 +255,67 @@ def make_sector_graph(ticker_name):
                 name=f"Ticker {ticker_reg_index}",
             )
         )
-    print(data)
+    #print(data)
     layout = {"xaxis": {"title": "date"}, "yaxis": {"title": "value"}}
 
     return go.Figure(data=data, layout=layout)
 
+# same sector ticker graph
+@app.callback(
+    Output("forcast-ticker-graph", "figure"),
+    [
+        Input("ticker-variable", "value"),
+    ],
+)
+def make_forcast_graph(ticker_name):
+    # minimal input validation, make sure there's at least one cluster
+    ticker_index = tickers_df[tickers_df.name == ticker_name].index[0]
+    #sector_filter = tickers_df[tickers_df.name == ticker_name].sector[0]
+    tickers_data = get_ticker_regressors(tickers_df, ticker_index, FILTER)
+    #print(f'{len(tickers_data)} regressor tickers added')
+    holidays_df = get_holidays(tickers_df,ticker_index)
+    
+    p_df = pd.DataFrame({
+        "ds":tickers_data[ticker_index]['data'].index,
+        "y": tickers_data[ticker_index]['data'].close
+    }).reset_index(drop=True)
+
+    fin_regressors = get_fin_regressors(ticker_index)
+    print(fin_regressors)
+
+    # add grossProfit_margin to the df
+    
+    p_df['grossProfit_margin'] = 'NaN'
+    for d in fin_regressors['endDate']:
+        mask = p_df['ds'] > d
+        p_df['grossProfit_margin'][mask] = fin_regressors.loc[d.strftime("%Y-%m-%d")].grossProfit_margin
+
+    print(p_df)
+
+    data = [
+        go.Scatter(
+            x=p_df["ds"],
+            y=p_df["y"],
+            mode="markers",
+            marker={"size": 5},
+            name=f"{ticker_name} - {ticker_index}",
+        )
+        #for c in range(n_clusters)
+    ]
+    # for ticker_reg_index in tickers_data.keys():
+    #     data.append(
+    #         go.Scatter(
+    #             x=tickers_data[ticker_reg_index]['data'].index,
+    #             y=tickers_data[ticker_reg_index]['data'].close,
+    #             mode="lines",
+    #             line=go.scatter.Line(color='gray'),
+    #             name=f"Ticker {ticker_reg_index}",
+    #         )
+    #     )
+    # print(data)
+    layout = {"xaxis": {"title": "date"}, "yaxis": {"title": "value"}}
+
+    return go.Figure(data=data, layout=layout)
 
 
 
