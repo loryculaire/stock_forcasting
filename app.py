@@ -207,7 +207,7 @@ controls2 = dbc.Card(
 
 app.layout = dbc.Container(
     [
-        html.H1("Stock forcasting"),
+        html.H1("Stock forecasting"),
         html.Hr(),
         dbc.Row(
             [
@@ -280,16 +280,31 @@ def make_forcast_graph(ticker_name):
         "y": tickers_data[ticker_index]['data'].close
     }).reset_index(drop=True)
 
-    fin_regressors = get_fin_regressors(ticker_index)
-    print(fin_regressors)
-
-    # add grossProfit_margin to the df
     
-    p_df['grossProfit_margin'] = 'NaN'
-    for d in fin_regressors['endDate']:
-        mask = p_df['ds'] > d
-        p_df['grossProfit_margin'][mask] = fin_regressors.loc[d.strftime("%Y-%m-%d")].grossProfit_margin
+    # add financial regressors to the df
+    fin_regressors = get_fin_regressors(ticker_index)
+    reg_names = ['grossProfit_margin', 'netIncome_margin', 'operatingIncome_margin']
 
+    for reg in reg_names:
+        p_df[reg] = 'NaN'
+        for d in fin_regressors['endDate']:
+            mask = p_df['ds'] > d
+            p_df[reg][mask] = fin_regressors.loc[d.strftime("%Y-%m-%d")][reg]
+
+
+    # add ticker regressors to the df
+    for key in tickers_data.keys():
+
+        if key != ticker_name:
+            data_reg = tickers_data[key]['data']
+            data_reg = pd.DataFrame({
+                        "ds": data_reg.index,
+                        key: data_reg["close"]
+            }).reset_index(drop=True)
+            
+            p_df[key] = data_reg[key]
+            p_df = p_df.dropna(axis = 1, thresh=int(len(p_df)*0.75))
+        
     print(p_df)
 
     data = [
