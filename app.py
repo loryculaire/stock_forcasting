@@ -1,4 +1,6 @@
 # import necessary libraries
+import matplotlib
+matplotlib.use('Agg')
 import dash
 import dash_bootstrap_components as dbc
 import dash_core_components as dcc
@@ -26,12 +28,12 @@ from sklearn.cluster import KMeans
 START_DATE="01/01/2018"
 SPLIT_DATE = "2020-10-01"
 YEARS=[2018,2019,2020]
-TICKER_NAME = "HMI.F"
+#TICKER_NAME = "HMI.F"
 INDICES_NAMES = ['CAC 40', 'FTSE 100', 'NASDAQ 100', 'S&P 500', 'DAX', 'DOW JONES']
 FILTER = 'sector'
 
 # get list of tickers and meta data from indices 
-def get_tickets(indices_names):
+def get_tickers(indices_names):
     
     stock_data = PyTickerSymbols()
 
@@ -180,8 +182,7 @@ def get_fin_regressors(ticker_code):
 
 
 
-tickers_df = get_tickets(INDICES_NAMES)
-#holidays_df = get_holidays(tickers_df,ticker_index)
+tickers_df = get_tickers(INDICES_NAMES)
 
 # Layout
 app = dash.Dash(external_stylesheets=[dbc.themes.BOOTSTRAP])
@@ -196,7 +197,7 @@ controls2 = dbc.Card(
                     options=[
                         {"label": col, "value": col} for col in tickers_df["name"]
                     ],
-                    value="ticker",
+                    value=tickers_df["name"][0],
                 ),
             ]
         ),
@@ -270,9 +271,9 @@ def make_sector_graph(ticker_name):
 def make_forcast_graph(ticker_name):
     # minimal input validation, make sure there's at least one cluster
     ticker_index = tickers_df[tickers_df.name == ticker_name].index[0]
-    #sector_filter = tickers_df[tickers_df.name == ticker_name].sector[0]
+    
     tickers_data = get_ticker_regressors(tickers_df, ticker_index, FILTER)
-    #print(f'{len(tickers_data)} regressor tickers added')
+    
     holidays_df = get_holidays(tickers_df,ticker_index)
     
     p_df = pd.DataFrame({
@@ -283,7 +284,8 @@ def make_forcast_graph(ticker_name):
     
     # add financial regressors to the df
     fin_regressors = get_fin_regressors(ticker_index)
-    reg_names = ['grossProfit_margin', 'netIncome_margin', 'operatingIncome_margin']
+    print(fin_regressors)
+    reg_names = ['grossProfit_margin', 'netIncome_margin', 'operatingIncome_margin', 'revenue_growth']
 
     for reg in reg_names:
         p_df[reg] = 'NaN'
@@ -295,7 +297,7 @@ def make_forcast_graph(ticker_name):
     # add ticker regressors to the df
     for key in tickers_data.keys():
 
-        if key != ticker_name:
+        if key != ticker_index:
             data_reg = tickers_data[key]['data']
             data_reg = pd.DataFrame({
                         "ds": data_reg.index,
@@ -305,33 +307,55 @@ def make_forcast_graph(ticker_name):
             p_df[key] = data_reg[key]
             p_df = p_df.dropna(axis = 1, thresh=int(len(p_df)*0.75))
         
-    print(p_df)
+    print(p_df.columns)
 
-    data = [
-        go.Scatter(
-            x=p_df["ds"],
-            y=p_df["y"],
-            mode="markers",
-            marker={"size": 5},
-            name=f"{ticker_name} - {ticker_index}",
-        )
-        #for c in range(n_clusters)
-    ]
-    # for ticker_reg_index in tickers_data.keys():
-    #     data.append(
-    #         go.Scatter(
-    #             x=tickers_data[ticker_reg_index]['data'].index,
-    #             y=tickers_data[ticker_reg_index]['data'].close,
-    #             mode="lines",
-    #             line=go.scatter.Line(color='gray'),
-    #             name=f"Ticker {ticker_reg_index}",
-    #         )
-    #     )
-    # print(data)
-    layout = {"xaxis": {"title": "date"}, "yaxis": {"title": "value"}}
+    # remove selected ticker from the tickers_data dict
+    new_dict = {}
+    for key, value in tickers_data.items():
+        if key in list(p_df.columns[2:]):
+            new_dict[key] = value
 
-    return go.Figure(data=data, layout=layout)
+    tickers_data = new_dict
 
+    # predict
+
+    ## Train_test_split 
+    X_train = p_df.loc[p_df["ds"] < SPLIT_DATE, :].dropna()
+    X_test = p_df.loc[p_df["ds"] >= SPLIT_DATE, :].dropna()
+
+    # initialize predictor
+    m = Prophet(holidays=holidays_df)
+
+    # add financial regressors
+    m.add_regressor('grossProfit_margin')
+    m.add_regressor('operatingIncome_margin')
+    m.add_regressor('netIncome_margin')
+    m.add_regressor('revenue_growth')
+
+
+    # add same industry stock regressors
+    for key, value in tickers_data.items():
+        if key != ticker_name:
+            print(f'{key}-{ticker_name}')
+            m.add_regressor(key)
+
+    m.fit(X_train)
+    forecast = m.predict(X_test)
+    
+    # print(p_df.dropna().tail())
+    # m.fit(p_df.dropna())
+    # future = m.make_future_dataframe(periods=30)
+    # forecast = m.predict(future)
+    
+    
+    print('here')
+    
+    from fbprophet.plot import plot_plotly
+    import plotly.offline as py
+
+    fig = plot_plotly(m, forecast)
+    fig.add_trace(go.Scatter(x=X_test["ds"],y=X_test["y"]) )
+    return fig
 
 
 if __name__ == "__main__":
