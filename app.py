@@ -244,33 +244,37 @@ app.layout = dbc.Container(
 )
 def make_sector_graph(ticker_name):
     # minimal input validation, make sure there's at least one cluster
-    ticker_index = tickers_df[tickers_df.name == ticker_name].index[0]
-    
-    tickers_data = get_ticker_regressors(tickers_df, ticker_index, FILTER)
-    
-    data = [
-        go.Scatter(
-            x=tickers_data[ticker_index]['data'].index,
-            y=tickers_data[ticker_index]['data'].close,
-            mode="markers",
-            marker={"size": 5},
-            name=f"{ticker_name} - {ticker_index}",
-        )
-    ]
-    for ticker_reg_index in tickers_data.keys():
-        data.append(
+    if ticker_name is None:
+        return go.Figure()
+    else:
+        ticker_index = tickers_df[tickers_df.name == ticker_name].index[0]
+        tickers_data = get_ticker_regressors(tickers_df, ticker_index, FILTER)
+        
+        data = [
             go.Scatter(
-                x=tickers_data[ticker_reg_index]['data'].index,
-                y=tickers_data[ticker_reg_index]['data'].close,
-                mode="lines",
-                line=go.scatter.Line(color='gray'),
-                name=f"Ticker {ticker_reg_index}",
+                x=tickers_data[ticker_index]['data'].index,
+                y=tickers_data[ticker_index]['data'].close,
+                mode="markers",
+                marker={"size": 5},
+                name=f"{ticker_name} - {ticker_index}",
             )
-        )
-    #print(data)
-    layout = {"xaxis": {"title": "date"}, "yaxis": {"title": "value"}}
+        ]
+        for ticker_reg_index in tickers_data.keys():
+            data.append(
+                go.Scatter(
+                    x=tickers_data[ticker_reg_index]['data'].index,
+                    y=tickers_data[ticker_reg_index]['data'].close,
+                    mode="lines",
+                    line=go.scatter.Line(color='gray'),
+                    name=f"Ticker {ticker_reg_index}",
+                )
+            )
+        #print(data)
+        layout = {"xaxis": {"title": "date"}, "yaxis": {"title": "value"}}
 
-    return go.Figure(data=data, layout=layout)
+        return go.Figure(data=data, layout=layout)
+
+
 
 # forecast ticker graph
 @app.callback(
@@ -283,90 +287,94 @@ def make_sector_graph(ticker_name):
 )
 def make_forcast_graph(n_clicks, value):
     # minimal input validation, make sure there's at least one cluster
-    ticker_name = value
-    print(ticker_name)
-    ticker_index = tickers_df[tickers_df.name == ticker_name].index[0]
+    if value is None:
+        return go.Figure()
+    else:
     
-    tickers_data = get_ticker_regressors(tickers_df, ticker_index, FILTER)
-    
-    holidays_df = get_holidays(tickers_df,ticker_index)
-    
-    p_df = pd.DataFrame({
-        "ds":tickers_data[ticker_index]['data'].index,
-        "y": tickers_data[ticker_index]['data'].close
-    }).reset_index(drop=True)
-
-    
-    # add financial regressors to the df
-    fin_regressors = get_fin_regressors(ticker_index)
-    #print(fin_regressors)
-    reg_names = ['grossProfit_margin', 'netIncome_margin', 'operatingIncome_margin', 'revenue_growth']
-
-    for reg in reg_names:
-        p_df[reg] = 'NaN'
-        for d in fin_regressors['endDate']:
-            mask = p_df['ds'] > d
-            p_df[reg][mask] = fin_regressors.loc[d.strftime("%Y-%m-%d")][reg]
-
-
-    # add ticker regressors to the df
-    for key in tickers_data.keys():
-
-        if key != ticker_index:
-            data_reg = tickers_data[key]['data']
-            data_reg = pd.DataFrame({
-                        "ds": data_reg.index,
-                        key: data_reg["close"]
-            }).reset_index(drop=True)
-            
-            p_df[key] = data_reg[key]
-            p_df = p_df.dropna(axis = 1, thresh=int(len(p_df)*0.75))
+        ticker_name = value
+        print(ticker_name)
+        ticker_index = tickers_df[tickers_df.name == ticker_name].index[0]
         
-    #print(p_df.columns)
+        tickers_data = get_ticker_regressors(tickers_df, ticker_index, FILTER)
+        
+        holidays_df = get_holidays(tickers_df,ticker_index)
+        
+        p_df = pd.DataFrame({
+            "ds":tickers_data[ticker_index]['data'].index,
+            "y": tickers_data[ticker_index]['data'].close
+        }).reset_index(drop=True)
 
-    # remove selected ticker from the tickers_data dict
-    new_dict = {}
-    for key, value in tickers_data.items():
-        if key in list(p_df.columns[2:]):
-            new_dict[key] = value
+        
+        # add financial regressors to the df
+        fin_regressors = get_fin_regressors(ticker_index)
+        #print(fin_regressors)
+        reg_names = ['grossProfit_margin', 'netIncome_margin', 'operatingIncome_margin', 'revenue_growth']
 
-    tickers_data = new_dict
-
-    # predict
-
-    ## Train_test_split 
-    X_train = p_df.loc[p_df["ds"] < SPLIT_DATE, :].dropna()
-    X_test = p_df.loc[p_df["ds"] >= SPLIT_DATE, :].dropna()
-
-    # initialize predictor
-    m = Prophet(holidays=holidays_df)
-
-    # add financial regressors
-    m.add_regressor('grossProfit_margin')
-    m.add_regressor('operatingIncome_margin')
-    m.add_regressor('netIncome_margin')
-    m.add_regressor('revenue_growth')
+        for reg in reg_names:
+            p_df[reg] = 'NaN'
+            for d in fin_regressors['endDate']:
+                mask = p_df['ds'] > d
+                p_df[reg][mask] = fin_regressors.loc[d.strftime("%Y-%m-%d")][reg]
 
 
-    # add same industry stock regressors
-    # for key, value in tickers_data.items():
-    #     if key != ticker_name:
-    #         #print(f'{key}-{ticker_name}')
-    #         m.add_regressor(key)
+        # add ticker regressors to the df
+        for key in tickers_data.keys():
 
-    m.fit(X_train)
-    forecast = m.predict(X_test)
-    
-    # print(p_df.dropna().tail())
-    # m.fit(p_df.dropna())
-    # future = m.make_future_dataframe(periods=30)
-    # forecast = m.predict(future)
-    
+            if key != ticker_index:
+                data_reg = tickers_data[key]['data']
+                data_reg = pd.DataFrame({
+                            "ds": data_reg.index,
+                            key: data_reg["close"]
+                }).reset_index(drop=True)
+                
+                p_df[key] = data_reg[key]
+                p_df = p_df.dropna(axis = 1, thresh=int(len(p_df)*0.75))
+            
+        #print(p_df.columns)
+
+        # remove selected ticker from the tickers_data dict
+        new_dict = {}
+        for key, value in tickers_data.items():
+            if key in list(p_df.columns[2:]):
+                new_dict[key] = value
+
+        tickers_data = new_dict
+
+        # predict
+
+        ## Train_test_split 
+        X_train = p_df.loc[p_df["ds"] < SPLIT_DATE, :].dropna()
+        X_test = p_df.loc[p_df["ds"] >= SPLIT_DATE, :].dropna()
+
+        # initialize predictor
+        m = Prophet(holidays=holidays_df)
+
+        # add financial regressors
+        m.add_regressor('grossProfit_margin')
+        m.add_regressor('operatingIncome_margin')
+        m.add_regressor('netIncome_margin')
+        m.add_regressor('revenue_growth')
 
 
-    fig = plot_plotly(m, forecast)
-    fig.add_trace(go.Scatter(x=X_test["ds"],y=X_test["y"]) )
-    return fig
+        # add same industry stock regressors
+        for key, value in tickers_data.items():
+            if key != ticker_name:
+                #print(f'{key}-{ticker_name}')
+                m.add_regressor(key)
+
+        m.fit(X_train)
+        forecast = m.predict(X_test)
+        
+        # print(p_df.dropna().tail())
+        # m.fit(p_df.dropna())
+        # future = m.make_future_dataframe(periods=1)
+        # forecast = m.predict(future)
+        
+
+
+        fig = plot_plotly(m, forecast)
+        fig.add_trace(go.Scatter(x=X_test["ds"],y=X_test["y"]) )
+        return fig
 
 
 if __name__ == "__main__":
