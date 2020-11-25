@@ -26,7 +26,7 @@ from sklearn.cluster import KMeans
 # parameters 
 
 START_DATE="01/01/2018"
-SPLIT_DATE = "2020-10-01"
+SPLIT_DATE = (datetime.date.today() - datetime.timedelta(days=60)).strftime("%Y-%m-%d")
 YEARS=[2018,2019,2020]
 #TICKER_NAME = "HMI.F"
 INDICES_NAMES = ['CAC 40', 'FTSE 100', 'NASDAQ 100', 'S&P 500', 'DAX', 'DOW JONES']
