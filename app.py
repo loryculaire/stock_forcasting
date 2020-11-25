@@ -8,6 +8,8 @@ import dash_html_components as html
 import plotly.graph_objs as go
 from dash.dependencies import Input, Output
 import plotly.express as px
+from fbprophet.plot import plot_plotly
+import plotly.offline as py
 
 import numpy as np
 import pandas as pd
@@ -185,7 +187,7 @@ def get_fin_regressors(ticker_code):
 tickers_df = get_tickers(INDICES_NAMES)
 
 # Layout
-app = dash.Dash(external_stylesheets=[dbc.themes.BOOTSTRAP])
+app = dash.Dash(external_stylesheets=[dbc.themes.BOOTSTRAP],suppress_callback_exceptions=True)
 
 controls2 = dbc.Card(
     [
@@ -203,14 +205,7 @@ controls2 = dbc.Card(
         ),
         dbc.FormGroup(
             [
-                dbc.Label("Ticker"),
-                dcc.Dropdown(
-                    id="ticker-variable-2",
-                    options=[
-                        {"label": col, "value": col} for col in tickers_df["name"]
-                    ],
-                    value=tickers_df["name"][0],
-                ),
+                dbc.Button('Submit', id='button', n_clicks=0),
             ]
         ),
     ],
@@ -360,8 +355,7 @@ def make_forcast_graph(ticker_name):
     # future = m.make_future_dataframe(periods=30)
     # forecast = m.predict(future)
     
-    from fbprophet.plot import plot_plotly
-    import plotly.offline as py
+
 
     fig = plot_plotly(m, forecast)
     fig.add_trace(go.Scatter(x=X_test["ds"],y=X_test["y"]) )
