@@ -201,17 +201,30 @@ controls2 = dbc.Card(
                 ),
             ]
         ),
+        dbc.FormGroup(
+            [
+                dbc.Label("Ticker"),
+                dcc.Dropdown(
+                    id="ticker-variable-2",
+                    options=[
+                        {"label": col, "value": col} for col in tickers_df["name"]
+                    ],
+                    value=tickers_df["name"][0],
+                ),
+            ]
+        ),
     ],
     body=True,
 )
-
 
 app.layout = dbc.Container(
     [
         html.H1("Stock forecasting"),
         html.Hr(),
+        html.Iframe(height=2*373.5, width=2*600, src='https://app.powerbi.com/view?r=eyJrIjoiYzEzYTEyZTQtMzQ5ZS00NjYxLThhMDEtYzY5MTYyNTIxZDkwIiwidCI6IjVlMDA5NGNjLTU3M2UtNDcyZi1hMjJkLThhMTA3NGE0ZTAyYyJ9&pageName=ReportSectionbe7bb85cbc057dd5e70d'),
         dbc.Row(
             [
+                
                 dbc.Col(controls2, md=4),
                 dbc.Col(dcc.Graph(id="sector-ticker-graph"), md=8),
                 dbc.Col(dcc.Graph(id="forcast-ticker-graph"), md=12),
@@ -284,7 +297,7 @@ def make_forcast_graph(ticker_name):
     
     # add financial regressors to the df
     fin_regressors = get_fin_regressors(ticker_index)
-    print(fin_regressors)
+    #print(fin_regressors)
     reg_names = ['grossProfit_margin', 'netIncome_margin', 'operatingIncome_margin', 'revenue_growth']
 
     for reg in reg_names:
@@ -307,7 +320,7 @@ def make_forcast_graph(ticker_name):
             p_df[key] = data_reg[key]
             p_df = p_df.dropna(axis = 1, thresh=int(len(p_df)*0.75))
         
-    print(p_df.columns)
+    #print(p_df.columns)
 
     # remove selected ticker from the tickers_data dict
     new_dict = {}
@@ -336,7 +349,7 @@ def make_forcast_graph(ticker_name):
     # add same industry stock regressors
     for key, value in tickers_data.items():
         if key != ticker_name:
-            print(f'{key}-{ticker_name}')
+            #print(f'{key}-{ticker_name}')
             m.add_regressor(key)
 
     m.fit(X_train)
@@ -346,9 +359,6 @@ def make_forcast_graph(ticker_name):
     # m.fit(p_df.dropna())
     # future = m.make_future_dataframe(periods=30)
     # forecast = m.predict(future)
-    
-    
-    print('here')
     
     from fbprophet.plot import plot_plotly
     import plotly.offline as py
