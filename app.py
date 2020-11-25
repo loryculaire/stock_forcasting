@@ -199,13 +199,14 @@ controls2 = dbc.Card(
                     options=[
                         {"label": col, "value": col} for col in tickers_df["name"]
                     ],
-                    value=tickers_df["name"][0],
+                    #value=tickers_df["name"][0],
+                    value=None,
                 ),
             ]
         ),
         dbc.FormGroup(
             [
-                dbc.Button('Submit', id='button', n_clicks=0),
+                dbc.Button('Submit', id='button', n_clicks=0, color="primary"),
             ]
         ),
     ],
@@ -217,11 +218,14 @@ app.layout = dbc.Container(
         html.H1("Stock forecasting"),
         html.Hr(),
         html.Iframe(height=2*373.5, width=2*600, src='https://app.powerbi.com/view?r=eyJrIjoiYzEzYTEyZTQtMzQ5ZS00NjYxLThhMDEtYzY5MTYyNTIxZDkwIiwidCI6IjVlMDA5NGNjLTU3M2UtNDcyZi1hMjJkLThhMTA3NGE0ZTAyYyJ9&pageName=ReportSectionbe7bb85cbc057dd5e70d'),
+        html.Hr(),
         dbc.Row(
             [
-                
+                dbc.Col(html.H2("Stock selection"), md=12),
                 dbc.Col(controls2, md=4),
                 dbc.Col(dcc.Graph(id="sector-ticker-graph"), md=8),
+                #dbc.Col(html.Hr(md=12)),
+                dbc.Col(html.H2("Stock forcasting"), md=12),
                 dbc.Col(dcc.Graph(id="forcast-ticker-graph"), md=12),
             ],
             align="center",
@@ -241,10 +245,9 @@ app.layout = dbc.Container(
 def make_sector_graph(ticker_name):
     # minimal input validation, make sure there's at least one cluster
     ticker_index = tickers_df[tickers_df.name == ticker_name].index[0]
-    #sector_filter = tickers_df[tickers_df.name == ticker_name].sector[0]
+    
     tickers_data = get_ticker_regressors(tickers_df, ticker_index, FILTER)
-    #print(f'{len(tickers_data)} regressor tickers added')
-
+    
     data = [
         go.Scatter(
             x=tickers_data[ticker_index]['data'].index,
@@ -269,15 +272,19 @@ def make_sector_graph(ticker_name):
 
     return go.Figure(data=data, layout=layout)
 
-# same sector ticker graph
+# forecast ticker graph
 @app.callback(
-    Output("forcast-ticker-graph", "figure"),
+    dash.dependencies.Output("forcast-ticker-graph", "figure"),
     [
-        Input("ticker-variable", "value"),
+        #Input("ticker-variable", "value"),
+        dash.dependencies.Input('button', 'n_clicks')],
+        [dash.dependencies.State('ticker-variable', 'value')
     ],
 )
-def make_forcast_graph(ticker_name):
+def make_forcast_graph(n_clicks, value):
     # minimal input validation, make sure there's at least one cluster
+    ticker_name = value
+    print(ticker_name)
     ticker_index = tickers_df[tickers_df.name == ticker_name].index[0]
     
     tickers_data = get_ticker_regressors(tickers_df, ticker_index, FILTER)
@@ -342,10 +349,10 @@ def make_forcast_graph(ticker_name):
 
 
     # add same industry stock regressors
-    for key, value in tickers_data.items():
-        if key != ticker_name:
-            #print(f'{key}-{ticker_name}')
-            m.add_regressor(key)
+    # for key, value in tickers_data.items():
+    #     if key != ticker_name:
+    #         #print(f'{key}-{ticker_name}')
+    #         m.add_regressor(key)
 
     m.fit(X_train)
     forecast = m.predict(X_test)
