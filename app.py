@@ -108,7 +108,7 @@ def get_ticker_regressors(tickers_df, ticker_name, filter_name):
                                     "sector": tickers_df.loc[ticker].sector, 
                                     "country": tickers_df.loc[ticker].country, 
                                     "indices": tickers_df.loc[ticker].indices,
-                                    "name": tickers_df.loc[ticker].name
+                                    "name": tickers_df.loc[ticker]['name']
                                     } 
         except:
             print(f"error on ticker {ticker}")
@@ -181,7 +181,10 @@ def get_fin_regressors(ticker_code):
     return data    
 
 
-
+def mean_absolute_percentage_error(y_true, y_pred): 
+    """Calculates MAPE given y_true and y_pred"""
+    y_true, y_pred = np.array(y_true), np.array(y_pred)
+    return np.mean(np.abs((y_true - y_pred) / y_true)) * 100
 
 
 tickers_df = get_tickers(INDICES_NAMES)
@@ -202,6 +205,19 @@ controls2 = dbc.Card(
                     #value=tickers_df["name"][0],
                     value=None,
                 ),
+            ]
+        ),
+        dbc.FormGroup(
+            [
+                dbc.Label("MAPE selection limit"),
+                dbc.Input(id='mape-ticker-selection', type='float'),
+            ]
+        ),
+
+        dbc.FormGroup(
+            [
+                dbc.Label("Shift in days"),
+                dbc.Input(id='shift-prediction-input', type='int'),
             ]
         ),
         dbc.FormGroup(
@@ -254,23 +270,24 @@ def make_sector_graph(ticker_name):
             go.Scatter(
                 x=tickers_data[ticker_index]['data'].index,
                 y=tickers_data[ticker_index]['data'].close,
-                mode="markers",
+                mode="lines",
                 marker={"size": 5},
                 name=f"{ticker_name} - {ticker_index}",
             )
         ]
         for ticker_reg_index in tickers_data.keys():
-            data.append(
-                go.Scatter(
-                    x=tickers_data[ticker_reg_index]['data'].index,
-                    y=tickers_data[ticker_reg_index]['data'].close,
-                    mode="lines",
-                    line=go.scatter.Line(color='gray'),
-                    name=f"Ticker {ticker_reg_index}",
+            if  ticker_reg_index != ticker_index:
+                data.append(
+                    go.Scatter(
+                        x=tickers_data[ticker_reg_index]['data'].index,
+                        y=tickers_data[ticker_reg_index]['data'].close,
+                        mode="lines",
+                        line=go.scatter.Line(color='gray'),
+                        name=f"{tickers_data[ticker_reg_index]['name']} - {ticker_reg_index}",
+                    )
                 )
-            )
         #print(data)
-        layout = {"xaxis": {"title": "date"}, "yaxis": {"title": "value"}}
+        layout = {"xaxis": {"title": "date"}, "yaxis": {"title": "stock value"}}
 
         return go.Figure(data=data, layout=layout)
 
@@ -326,6 +343,7 @@ def make_forcast_graph(n_clicks, value):
                             "ds": data_reg.index,
                             key: data_reg["close"]
                 }).reset_index(drop=True)
+
                 
                 p_df[key] = data_reg[key]
                 p_df = p_df.dropna(axis = 1, thresh=int(len(p_df)*0.75))
@@ -341,10 +359,12 @@ def make_forcast_graph(n_clicks, value):
         tickers_data = new_dict
 
         # predict
+        SHIFT=-7
+        p_df['y'] = p_df['y'].shift(SHIFT)
 
         ## Train_test_split 
         X_train = p_df.loc[p_df["ds"] < SPLIT_DATE, :].dropna()
-        X_test = p_df.loc[p_df["ds"] >= SPLIT_DATE, :].dropna()
+        X_test = p_df.loc[p_df["ds"] >= SPLIT_DATE, :].dropna(subset=p_df.columns[2:])
 
         # initialize predictor
         m = Prophet(holidays=holidays_df)
@@ -370,10 +390,14 @@ def make_forcast_graph(n_clicks, value):
         # future = m.make_future_dataframe(periods=1)
         # forecast = m.predict(future)
         
+        mape = mean_absolute_percentage_error(y_true=X_test['y'][:SHIFT],
+                   y_pred=m.predict(X_test)["yhat"][:SHIFT])
 
+        print("The MAPE on the test set is : \n {}".format(mape))
 
         fig = plot_plotly(m, forecast)
-        fig.add_trace(go.Scatter(x=X_test["ds"],y=X_test["y"]) )
+        fig.add_trace(go.Scatter(x=X_test["ds"],y=X_test["y"]))
+        fig.update_layout(showlegend=True)
         return fig
 
 
