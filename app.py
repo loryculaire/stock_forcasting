@@ -207,10 +207,11 @@ controls2 = dbc.Card(
                 ),
             ]
         ),
+        # TODO put a slider here 
         dbc.FormGroup(
             [
-                dbc.Label("MAPE selection limit"),
-                dbc.Input(id='mape-ticker-selection', type='float', value=1000.0),
+                dbc.Label("Correlation threshold (0 <-> 1)"),
+                dbc.Input(id='ticker-selection', type='float', value=0.0),
             ]
         ),
 
@@ -233,6 +234,7 @@ app.layout = dbc.Container(
     [
         html.H1("Stock forecasting"),
         html.Hr(),
+        html.H2("Stock benchmark"),
         html.Iframe(height=2*373.5, width=2*600, src='https://app.powerbi.com/view?r=eyJrIjoiYzEzYTEyZTQtMzQ5ZS00NjYxLThhMDEtYzY5MTYyNTIxZDkwIiwidCI6IjVlMDA5NGNjLTU3M2UtNDcyZi1hMjJkLThhMTA3NGE0ZTAyYyJ9&pageName=ReportSectionbe7bb85cbc057dd5e70d'),
         html.Hr(),
         dbc.Row(
@@ -241,7 +243,7 @@ app.layout = dbc.Container(
                 dbc.Col(controls2, md=4),
                 dbc.Col(dcc.Graph(id="sector-ticker-graph"), md=8),
                 #dbc.Col(html.Hr()),
-                dbc.Col(html.H2("Stock forcasting"), md=12),
+                dbc.Col(html.H2("Stock forecasting"), md=12),
                 dbc.Col(dcc.Graph(id="forcast-ticker-graph"), md=12),
             ],
             align="center",
@@ -256,11 +258,11 @@ app.layout = dbc.Container(
     Output("sector-ticker-graph", "figure"),
     [
         Input("ticker-variable", "value"),
-        Input("mape-ticker-selection", "value")
+        Input("ticker-selection", "value")
     ],
 )
-def make_sector_graph(ticker_name, mape_filter):
-    print(f'mape filter : {mape_filter}')
+def make_sector_graph(ticker_name, corr_filter):
+    print(f'corr filter : {corr_filter}')
     # minimal input validation, make sure there's at least one cluster
     if ticker_name is None:
         return go.Figure()  
@@ -279,29 +281,31 @@ def make_sector_graph(ticker_name, mape_filter):
         ]
         for ticker_reg_index in tickers_data.keys():
             if  ticker_reg_index != ticker_index:
+                
+                # get correlation between the target and it's potential regressors
                 df = pd.DataFrame({
                     ticker_index : tickers_data[ticker_index]['data'].close,
                     ticker_reg_index : tickers_data[ticker_reg_index]['data'].close
                 }).reset_index(drop=True)
 
-                df = df.dropna()
-                
-                mape_reg = mean_absolute_percentage_error(y_true=df[ticker_index],
-                   y_pred=df[ticker_reg_index])
-                   
-                print(f'mape with regressor {ticker_reg_index} : {mape_reg}')   
-                if mape_reg <= mape_filter:
-                    print(f'mape {mape_reg:.3f} < {mape_filter}')
+                df = df.dropna() 
+
+                stocks_returns = np.log(df/df.shift(1))
+                corr_matrix = stocks_returns.corr()
+                corr_reg = corr_matrix.iloc[0,1]
+   
+                if np.abs(corr_reg) > float(corr_filter):
+                    #print(f'corr {corr_reg:.3f} > {corr_filter}')
                     data.append(
                         go.Scatter(
                             x=tickers_data[ticker_reg_index]['data'].index,
                             y=tickers_data[ticker_reg_index]['data'].close,
                             mode="lines",
                             line=go.scatter.Line(color='gray'),
-                            name=f"{tickers_data[ticker_reg_index]['name']} - {ticker_reg_index} - {mape_reg:.1f}",
+                            name=f"{tickers_data[ticker_reg_index]['name']} - {ticker_reg_index} - {corr_reg:.3f}",
                         )
                     )
-        #print(data)
+
         layout = {"xaxis": {"title": "date"}, "yaxis": {"title": "stock value"}}
 
         return go.Figure(data=data, layout=layout)
@@ -311,18 +315,17 @@ def make_sector_graph(ticker_name, mape_filter):
 # forecast ticker graph
 @app.callback(
     dash.dependencies.Output("forcast-ticker-graph", "figure"),
-    [
-        #Input("ticker-variable", "value"),
-        dash.dependencies.Input('button', 'n_clicks')],
-        [dash.dependencies.State('ticker-variable', 'value')
-    ],
+    [dash.dependencies.Input('button', 'n_clicks')],
+    [dash.dependencies.State('ticker-variable', 'value')],
+    [dash.dependencies.State('ticker-selection', 'value')]
+    ,
 )
-def make_forcast_graph(n_clicks, value):
+def make_forcast_graph(n_clicks, value, corr_filter):
     # minimal input validation, make sure there's at least one cluster
     if value is None:
         return go.Figure()
     else:
-    
+        print(float(corr_filter))
         ticker_name = value
         print(ticker_name)
         ticker_index = tickers_df[tickers_df.name == ticker_name].index[0]
