@@ -210,7 +210,7 @@ controls2 = dbc.Card(
         dbc.FormGroup(
             [
                 dbc.Label("MAPE selection limit"),
-                dbc.Input(id='mape-ticker-selection', type='float'),
+                dbc.Input(id='mape-ticker-selection', type='float', value=1000.0),
             ]
         ),
 
@@ -240,7 +240,7 @@ app.layout = dbc.Container(
                 dbc.Col(html.H2("Stock selection"), md=12),
                 dbc.Col(controls2, md=4),
                 dbc.Col(dcc.Graph(id="sector-ticker-graph"), md=8),
-                #dbc.Col(html.Hr(md=12)),
+                #dbc.Col(html.Hr()),
                 dbc.Col(html.H2("Stock forcasting"), md=12),
                 dbc.Col(dcc.Graph(id="forcast-ticker-graph"), md=12),
             ],
@@ -256,12 +256,14 @@ app.layout = dbc.Container(
     Output("sector-ticker-graph", "figure"),
     [
         Input("ticker-variable", "value"),
+        Input("mape-ticker-selection", "value")
     ],
 )
-def make_sector_graph(ticker_name):
+def make_sector_graph(ticker_name, mape_filter):
+    print(f'mape filter : {mape_filter}')
     # minimal input validation, make sure there's at least one cluster
     if ticker_name is None:
-        return go.Figure()
+        return go.Figure()  
     else:
         ticker_index = tickers_df[tickers_df.name == ticker_name].index[0]
         tickers_data = get_ticker_regressors(tickers_df, ticker_index, FILTER)
@@ -277,15 +279,28 @@ def make_sector_graph(ticker_name):
         ]
         for ticker_reg_index in tickers_data.keys():
             if  ticker_reg_index != ticker_index:
-                data.append(
-                    go.Scatter(
-                        x=tickers_data[ticker_reg_index]['data'].index,
-                        y=tickers_data[ticker_reg_index]['data'].close,
-                        mode="lines",
-                        line=go.scatter.Line(color='gray'),
-                        name=f"{tickers_data[ticker_reg_index]['name']} - {ticker_reg_index}",
+                df = pd.DataFrame({
+                    ticker_index : tickers_data[ticker_index]['data'].close,
+                    ticker_reg_index : tickers_data[ticker_reg_index]['data'].close
+                }).reset_index(drop=True)
+
+                df = df.dropna()
+                
+                mape_reg = mean_absolute_percentage_error(y_true=df[ticker_index],
+                   y_pred=df[ticker_reg_index])
+                   
+                print(f'mape with regressor {ticker_reg_index} : {mape_reg}')   
+                if mape_reg <= mape_filter:
+                    print(f'mape {mape_reg:.3f} < {mape_filter}')
+                    data.append(
+                        go.Scatter(
+                            x=tickers_data[ticker_reg_index]['data'].index,
+                            y=tickers_data[ticker_reg_index]['data'].close,
+                            mode="lines",
+                            line=go.scatter.Line(color='gray'),
+                            name=f"{tickers_data[ticker_reg_index]['name']} - {ticker_reg_index} - {mape_reg:.1f}",
+                        )
                     )
-                )
         #print(data)
         layout = {"xaxis": {"title": "date"}, "yaxis": {"title": "stock value"}}
 
