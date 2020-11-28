@@ -228,7 +228,7 @@ controls2 = dbc.Card(
 
         dbc.FormGroup(
             [
-                dbc.Label("Shift in days"),
+                dbc.Label("number of forcasted days"),
                 dbc.Input(id='shift-prediction-input', type='int', value=1),
             ]
         ),
