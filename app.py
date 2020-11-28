@@ -186,7 +186,6 @@ def mean_absolute_percentage_error(y_true, y_pred):
     y_true, y_pred = np.array(y_true), np.array(y_pred)
     return np.mean(np.abs((y_true - y_pred) / y_true)) * 100
 
-
 tickers_df = get_tickers(INDICES_NAMES)
 
 # Layout
@@ -211,14 +210,14 @@ controls2 = dbc.Card(
         dbc.FormGroup(
             [
                 dbc.Label("Correlation threshold (0 <-> 1)"),
-                dbc.Input(id='ticker-selection', type='float', value=0.0),
+                dbc.Input(id='ticker-selection', type='float', value=0.5),
             ]
         ),
 
         dbc.FormGroup(
             [
                 dbc.Label("Shift in days"),
-                dbc.Input(id='shift-prediction-input', type='int'),
+                dbc.Input(id='shift-prediction-input', type='int', value=0),
             ]
         ),
         dbc.FormGroup(
@@ -242,7 +241,7 @@ app.layout = dbc.Container(
                 dbc.Col(html.H2("Stock selection"), md=12),
                 dbc.Col(controls2, md=4),
                 dbc.Col(dcc.Graph(id="sector-ticker-graph"), md=8),
-                #dbc.Col(html.Hr()),
+                dbc.Col(html.Hr()),
                 dbc.Col(html.H2("Stock forecasting"), md=12),
                 dbc.Col(dcc.Graph(id="forcast-ticker-graph"), md=12),
             ],
@@ -317,10 +316,10 @@ def make_sector_graph(ticker_name, corr_filter):
     dash.dependencies.Output("forcast-ticker-graph", "figure"),
     [dash.dependencies.Input('button', 'n_clicks')],
     [dash.dependencies.State('ticker-variable', 'value')],
-    [dash.dependencies.State('ticker-selection', 'value')]
-    ,
+    [dash.dependencies.State('ticker-selection', 'value')],
+    [dash.dependencies.State('shift-prediction-input', 'value')],
 )
-def make_forcast_graph(n_clicks, value, corr_filter):
+def make_forcast_graph(n_clicks, value, corr_filter, shift_val):
     # minimal input validation, make sure there's at least one cluster
     if value is None:
         return go.Figure()
@@ -377,7 +376,7 @@ def make_forcast_graph(n_clicks, value, corr_filter):
         tickers_data = new_dict
 
         # predict
-        SHIFT=-7
+        SHIFT=-(int(shift_val))
         p_df['y'] = p_df['y'].shift(SHIFT)
 
         ## Train_test_split 
@@ -409,10 +408,25 @@ def make_forcast_graph(n_clicks, value, corr_filter):
         # forecast = m.predict(future)
         
         mape = mean_absolute_percentage_error(y_true=X_test['y'][:SHIFT],
-                   y_pred=m.predict(X_test)["yhat"][:SHIFT])
+                   y_pred=forecast["yhat"][:SHIFT])
 
         print("The MAPE on the test set is : \n {}".format(mape))
+        
+        
+        # TODO correlation functon
+        a=X_test['y'][:SHIFT]
+        b=forecast["yhat"][:SHIFT]
+        df = pd.DataFrame({
+            'a' : a.reset_index(drop=True),
+            'b' : b.reset_index(drop=True)
+        }).reset_index(drop=True)
+        #print(df)
+        stocks_returns = np.log(df/df.shift(1))
+        corr_matrix = stocks_returns.corr()
+        corr_reg = corr_matrix.iloc[0,1]
+        print("The correlation on the test set is : \n {}".format(corr_reg))    
 
+        # return forecast figure
         fig = plot_plotly(m, forecast)
         fig.add_trace(go.Scatter(x=X_test["ds"],y=X_test["y"]))
         fig.update_layout(showlegend=True)
